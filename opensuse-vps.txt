@@ -1,0 +1,73 @@
+# Add netbird repo
+# Fingerprint: AA9C 09AA 9DEA 2F58 112B 40DF DFFE AB2F D267 A61F
+sudo zypper addrepo https://pkgs.netbird.io/yum/ netbird
+
+# Add repo to install crun
+sudo zypper addrepo https://download.opensuse.org/repositories/Virtualization:containers/16.0/Virtualization:containers.repo
+
+# Delete previously created /srv
+sudo umount /srv
+sudo btrfs subvolume delete /srv
+
+# Create volumes and partitions
+sudo mkfs.btrfs /dev/vda3
+sudo mount /dev/sda3 /srv
+sudo btrfs subvolume create /srv/@
+sudo btrfs subvolume create /srv/@/containers
+sudo btrfs subvolume create /srv/@/postgres
+sudo btrfs subvolume create /srv/@/redis
+
+# Disable copy on write, to improve performance
+sudo chattr +C /srv/postgres
+sudo chattr +C /srv/redis
+
+# Prepend '#' to every line that contains /srv, commenting it out
+sudo sed -i '/\/srv/s/^/#/' /etc/fstab
+
+# Insert entry in fstab to mount new /srv
+sudo tee -a /etc/fstab << EOF
+UUID=$(lsblk -lf | awk '/sda3/{print $3}')  /srv                    btrfs  defaults                      0  0
+UUID=$(lsblk -lf | awk '/sda3/{print $3}')  /srv/containers         btrfs  subvol=/@/containers          0  0
+UUID=$(lsblk -lf | awk '/sda3/{print $3}')  /srv/postgres           btrfs  subvol=/@/postgres            0  0
+UUID=$(lsblk -lf | awk '/sda3/{print $3}')  /srv/redis              btrfs  subvol=/@/redis               0  0
+EOF
+
+# Make current user own the necesary srv folders
+sudo chown -R $USER:$USER /srv/containers
+sudo chown -R $USER:$USER /srv/postgres
+sudo chown -R $USER:$USER /srv/redis
+
+# Install packages
+# Have to install crun separately as runc is the defualt for OpenSUSE
+sudo zypper install zram-generator crun podman
+
+# Packages for enahanced kvm experience 
+sudo zypper install qemu-kvm libvirt-daemon libvirt-client bridge-utils
+
+# Setup container storage
+tee ~/.config/containers/storage.conf << 'EOF'
+[storage]
+graphroot = "/srv/containers"
+EOF
+
+# Reduce chances of using swap
+sudo sysctl vm.swappiness=40
+
+# Setup zram
+sudo tee /etc/systemd/zram-generator.conf << 'EOF'
+[zram0]
+zram-size = min(ram / 2, 8192)
+compression-algorithm = lz4
+swap-priority = 100
+EOF
+
+# Make zram units get created
+sudo systemctl daemon-reexec
+
+# Enable hardware resource consumption limits for rootless containers, using cgroupv2
+sudo tee /etc/default/grub.d/50-podman-cgroup-v2.cfg <<< 'systemd.unified_cgroup_hierarchy=1'
+sudo mkdir -p /etc/systemd/system/user@.service.d
+cat <<EOF | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
+[Service]
+Delegate=cpuset cpu io memory pids
+EOF
