@@ -86,7 +86,7 @@ EOF
 sudo systemctl daemon-reexec
 
 sudo tee /etc/sysctl.d/99-custom-tuning.conf << 'EOF'
-# Reuse TIME_WAIT sockets - important for pgbouncer + Fastify short-lived connections
+# Reuse TIME_WAIT sockets, important for short-lived connections
 net.ipv4.tcp_tw_reuse = 1
 # SYN flood protection
 net.ipv4.tcp_syncookies = 1
@@ -94,11 +94,14 @@ net.ipv4.tcp_rfc1337 = 1
 # Required for container networking
 net.ipv4.ip_forward = 1
 
+# Reserve huge pages for postgres, check the amount required by postgres
+# Using `SHOW shared_memory_size_in_huge_pages;`
+vm.nr_hugepages = 80
 # Since zram is enabled, a relatively high value is preferred
 vm.swappiness=60
 # Setting page-cluster to 0 disables page read-ahead to avoid CPU overhead on compressed memory blocks.
 vm.page-cluster=0
-# Required by Valkey - prevents background save failures
+# Required by Valkey to prevent background save failures
 vm.overcommit_memory = 1
 EOF
 
@@ -106,6 +109,11 @@ sudo mkdir -p /etc/systemd/system/user@.service.d
 cat << 'EOF' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
 [Service]
 Delegate=cpuset cpu io memory pids
+EOF
+
+# Required by valkey to minimize latency
+sudo tee /etc/default/grub.d/50-thp.cfg << 'EOF'
+GRUB_CMDLINE_LINUX="transparent_hugepage=never"
 EOF
 
 # Regenerate grub config because we modified cgroup settings
