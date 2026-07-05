@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Configuration options for devices and paths.
 SRV_MOUNT_PATH="/srv"
-MKFS_DEVICE="/dev/vda3"   
+MKFS_DEVICE="/dev/sda3"   
 MOUNT_DEVICE="/dev/sda3"  
 
 NETBIRD_REPO_ALIAS="netbird"
@@ -35,8 +35,8 @@ sudo btrfs subvolume create "$SRV_MOUNT_PATH/@/postgres"
 sudo btrfs subvolume create "$SRV_MOUNT_PATH/@/postgres_wal"
 sudo btrfs subvolume create "$SRV_MOUNT_PATH/@/valkey"
 
-# If srv mount path entry exists in fstab, comment out
-sudo sed -i "|^[^#]*${SRV_MOUNT_PATH}|s/^/#/" /etc/fstab
+# If srv mount path entry exists in fstab, comment out, uses a GNU sed extension
+sudo sed -i "\|^[^#]*${SRV_MOUNT_PATH}|s/^/#/" /etc/fstab
 DEVICE_UUID=$(lsblk -no UUID "$MOUNT_DEVICE")
 
 sudo tee -a /etc/fstab << EOF
