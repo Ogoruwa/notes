@@ -86,7 +86,7 @@ sudo zypper --non-interactive install zram-generator crun podman
 sudo zypper --non-interactive install qemu-kvm libvirt-daemon libvirt-client bridge-utils
 
 mkdir -p "$SRV_MOUNT_PATH/containers/storage"
-mkdir -p "~/.config/containers"
+mkdir -p ~/.config/containers
 tee ~/.config/containers/storage.conf << EOF
 [storage]
 driver = "overlay"
@@ -98,6 +98,7 @@ graphroot = "$SRV_MOUNT_PATH/containers/storage"
 mountopt = "nodev,metacopy=on"
 EOF
 
+sudo mkdir -p "/etc/systemd"
 sudo tee /etc/systemd/zram-generator.conf << 'EOF'
 [zram0]
 zram-size = min(ram / 2, 8192)
@@ -108,6 +109,7 @@ EOF
 # Make zram units get created
 sudo systemctl daemon-reexec
 
+sudo mkdir -p "/etc/sysctl.d"
 sudo tee /etc/sysctl.d/99-custom-tuning.conf << 'EOF'
 # Reuse TIME_WAIT sockets, important for short-lived connections
 net.ipv4.tcp_tw_reuse = 1
@@ -128,16 +130,29 @@ vm.page-cluster=0
 vm.overcommit_memory = 1
 EOF
 
-sudo mkdir -p /etc/systemd/system/user@.service.d
+sudo mkdir -p "/etc/systemd/system/user@.service.d"
 cat << 'EOF' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
 [Service]
 Delegate=cpuset cpu io memory pids
 EOF
 
-# Required by valkey to minimize latency
-sudo tee /etc/default/grub.d/50-thp.cfg << 'EOF'
-GRUB_CMDLINE_LINUX="transparent_hugepage=never"
+# Disable THP, required by valkey to minimize latency
+sudo tee /etc/systemd/system/disable-thp.service << 'EOF'
+[Unit]
+Description=Disable Transparent Huge Pages (THP)
+After=sysinit.target local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+[Install]
+WantedBy=multi-user.target
 EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable disable-thp.service
 
 # Regenerate grub config because we modified cgroup settings
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
