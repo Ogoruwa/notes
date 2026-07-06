@@ -15,6 +15,13 @@ sudo zypper addrepo "$NETBIRD_REPO" "$NETBIRD_REPO_ALIAS" || true
 # Add repo to install crun
 sudo zypper addrepo "$CONTAINER_REPO" || true
 
+# Download and import package gpg keys, to avoid approval interactive prompt
+curl -fsSL https://download.opensuse.org/repositories/Virtualization:/containers/16.0/repodata/repomd.xml.key > /tmp/repo-containers.key
+curl -fsSL https://pkgs.netbird.io/yum/repodata/repomd.xml.key > /tmp/repo-netbird.key
+
+rpm --import /tmp/repo-containers.key
+rpm --import /tmp/repo-netbird.key
+
 # Clean up previously existing mount and subvolumes safely.
 if mountpoint -q "$SRV_MOUNT_PATH"; then
     sudo umount "$SRV_MOUNT_PATH"
@@ -42,7 +49,7 @@ DEVICE_UUID=$(lsblk -no UUID "$MOUNT_DEVICE")
 
 sudo tee -a /etc/fstab << EOF
 
-UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}                    btrfs  defaults,noatime,compress=zstd:1 0  0
+UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}                    btrfs  defaults,subvol=/@,noatime                      0  0
 UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/containers         btrfs  subvol=/@/containers,noatime,compress=zstd:1    0  0
 UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/postgres           btrfs  subvol=/@/postgres,noatime                      0  0
 UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/postgres_wal       btrfs  subvol=/@/postgres_wal,noatime                  0  0
@@ -79,9 +86,16 @@ sudo zypper --non-interactive install zram-generator crun podman
 sudo zypper --non-interactive install qemu-kvm libvirt-daemon libvirt-client bridge-utils
 
 mkdir -p "$SRV_MOUNT_PATH/containers/storage"
+mkdir -p "~/.config/containers"
 tee ~/.config/containers/storage.conf << EOF
 [storage]
+driver = "overlay"
 graphroot = "$SRV_MOUNT_PATH/containers/storage"
+
+[storage.options.overlay]
+# Enable metacopy for faster layer operations
+# Requires kernel 4.19+ and overlay module
+mountopt = "nodev,metacopy=on"
 EOF
 
 sudo tee /etc/systemd/zram-generator.conf << 'EOF'
