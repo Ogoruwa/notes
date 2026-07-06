@@ -3,8 +3,7 @@ set -euo pipefail
 
 # Configuration options for devices and paths.
 SRV_MOUNT_PATH="/srv"
-MKFS_DEVICE="/dev/sda3"   
-MOUNT_DEVICE="/dev/sda3"  
+MOUNT_DEVICE="${1}"
 
 NETBIRD_REPO_ALIAS="netbird"
 NETBIRD_REPO="https://pkgs.netbird.io/yum/"
@@ -12,9 +11,9 @@ CONTAINER_REPO="https://download.opensuse.org/repositories/Virtualization:contai
 
 # Repository and system environment initialization.
 # GPG key fingerprint: https://docs.netbird.io/get-started/install/linux#open-suse-zypper
-sudo zypper addrepo "$NETBIRD_REPO" "$NETBIRD_REPO_ALIAS"
+sudo zypper addrepo "$NETBIRD_REPO" "$NETBIRD_REPO_ALIAS" || true
 # Add repo to install crun
-sudo zypper addrepo "$CONTAINER_REPO"
+sudo zypper addrepo "$CONTAINER_REPO" || true
 
 # Clean up previously existing mount and subvolumes safely.
 if mountpoint -q "$SRV_MOUNT_PATH"; then
@@ -26,7 +25,7 @@ if [ -d "$SRV_MOUNT_PATH" ]; then
 fi
 
 # Storage provisioning and btrfs layout creation.
-sudo mkfs.btrfs -f "$MKFS_DEVICE"
+sudo mkfs.btrfs "$MOUNT_DEVICE"
 sudo mount "$MOUNT_DEVICE" "$SRV_MOUNT_PATH"
 
 sudo btrfs subvolume create "$SRV_MOUNT_PATH/@"
