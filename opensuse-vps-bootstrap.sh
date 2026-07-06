@@ -19,8 +19,8 @@ sudo zypper addrepo "$CONTAINER_REPO" || true
 curl -fsSL https://download.opensuse.org/repositories/Virtualization:/containers/16.0/repodata/repomd.xml.key > /tmp/repo-containers.key
 curl -fsSL https://pkgs.netbird.io/yum/repodata/repomd.xml.key > /tmp/repo-netbird.key
 
-rpm --import /tmp/repo-containers.key
-rpm --import /tmp/repo-netbird.key
+sudo rpm --import /tmp/repo-containers.key
+sudo rpm --import /tmp/repo-netbird.key
 
 # Clean up previously existing mount and subvolumes safely.
 if mountpoint -q "$SRV_MOUNT_PATH"; then
@@ -83,6 +83,7 @@ sudo chown -R "$USER:$USER" "$SRV_MOUNT_PATH/valkey"
 # Install packages
 # Have to install crun separately as runc is the defualt for OpenSUSE
 sudo zypper --non-interactive install zram-generator crun podman
+# VM enhancements
 sudo zypper --non-interactive install qemu-kvm libvirt-daemon libvirt-client bridge-utils
 
 mkdir -p "$SRV_MOUNT_PATH/containers/storage"
@@ -91,11 +92,6 @@ tee ~/.config/containers/storage.conf << EOF
 [storage]
 driver = "overlay"
 graphroot = "$SRV_MOUNT_PATH/containers/storage"
-
-[storage.options.overlay]
-# Enable metacopy for faster layer operations
-# Requires kernel 4.19+ and overlay module
-mountopt = "nodev,metacopy=on"
 EOF
 
 sudo mkdir -p "/etc/systemd"
