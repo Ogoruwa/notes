@@ -18,10 +18,12 @@ sudo zypper addrepo "$CONTAINER_REPO" || true
 # Clean up previously existing mount and subvolumes safely.
 if mountpoint -q "$SRV_MOUNT_PATH"; then
     sudo umount "$SRV_MOUNT_PATH"
-fi
 
-if [ -d "$SRV_MOUNT_PATH" ]; then
-    sudo btrfs subvolume delete "$SRV_MOUNT_PATH" || true
+    # Get subvolume ID of old srv and delete it
+    SUBVOL_ID=$(sudo btrfs subvolume list / | grep "@$SRV_MOUNT_PATH" | awk '{print $2}')
+    if [ -n "$SUBVOL_ID" ]; then
+        sudo btrfs subvolume delete --subvolid "$SUBVOL_ID" /
+    fi
 fi
 
 # Storage provisioning and btrfs layout creation.
@@ -44,9 +46,17 @@ UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}                    btrfs  defaults,noatim
 UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/containers         btrfs  subvol=/@/containers,noatime,compress=zstd:1    0  0
 UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/postgres           btrfs  subvol=/@/postgres,noatime                      0  0
 UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/postgres_wal       btrfs  subvol=/@/postgres_wal,noatime                  0  0
-UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/valkey              btrfs  subvol=/@/valkey,noatime                         0  0
+UUID=${DEVICE_UUID}  ${SRV_MOUNT_PATH}/valkey             btrfs  subvol=/@/valkey,noatime                        0  0
+
 EOF
 
+# Create the mount point directories
+sudo mkdir -p "$SRV_MOUNT_PATH/containers"
+sudo mkdir -p "$SRV_MOUNT_PATH/postgres"
+sudo mkdir -p "$SRV_MOUNT_PATH/postgres_wal"
+sudo mkdir -p "$SRV_MOUNT_PATH/valkey"
+
+# Mount
 sudo mount "$SRV_MOUNT_PATH/containers"
 sudo mount "$SRV_MOUNT_PATH/postgres"
 sudo mount "$SRV_MOUNT_PATH/postgres_wal"
